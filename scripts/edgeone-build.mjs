@@ -333,7 +333,10 @@ function restoreLayoutAfterBuild() {
 
 // 构建前准备
 const wasConverted = convertProxyToMiddlewareForBuild();
-injectLayoutAuthCheck();
+// Authentication is already handled by the converted Next.js middleware.
+// Injecting the same guard into RootLayout is unsafe on EdgeOne because the
+// SSR request does not reliably expose the current pathname. In that case the
+// guard falls back to "/" and redirects the login page back to itself.
 
 // 确保异常退出时也能清理
 process.on('exit', () => {
