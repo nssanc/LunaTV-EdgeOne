@@ -50,6 +50,7 @@ const skipPaths = [
   '/icons/', '/logo.png', '/screenshot.png',
   '/login', '/register', '/oidc-register', '/warning',
   '/api/login', '/api/register', '/api/logout', '/api/cron',
+  '/api/edgeone-login-bridge',
   '/api/server-config', '/api/tvbox', '/api/tvbox-config',
   '/api/live/merged', '/api/parse', '/api/bing-wallpaper',
   '/api/proxy/', '/api/telegram/', '/api/auth/oidc/',
@@ -287,9 +288,12 @@ function injectLayoutAuthCheck() {
   if (!__skipPaths.some((p) => __path.startsWith(p))) {
     const __cookieStore = await cookies();
     const __authCookie = __cookieStore.get('user_auth') || __cookieStore.get('auth');
-    if (!__authCookie) {
+    // The bridge cookie is scoped to /login, so it can only bypass this guard
+    // while rendering the login page. It is never sent to protected routes.
+    const __loginBypass = __cookieStore.get('edgeone_login_bypass');
+    if (!__authCookie && !__loginBypass) {
       const __search = __h.get('x-search') || '';
-      redirect('/login?redirect=' + encodeURIComponent(__path + __search));
+      redirect('/api/edgeone-login-bridge?redirect=' + encodeURIComponent(__path + __search));
     }
   }
 `;
@@ -333,10 +337,7 @@ function restoreLayoutAfterBuild() {
 
 // 构建前准备
 const wasConverted = convertProxyToMiddlewareForBuild();
-// Authentication is already handled by the converted Next.js middleware.
-// Injecting the same guard into RootLayout is unsafe on EdgeOne because the
-// SSR request does not reliably expose the current pathname. In that case the
-// guard falls back to "/" and redirects the login page back to itself.
+injectLayoutAuthCheck();
 
 // 确保异常退出时也能清理
 process.on('exit', () => {
