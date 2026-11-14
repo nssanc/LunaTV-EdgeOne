@@ -14,24 +14,44 @@ import { useSite } from '@/components/SiteProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { OIDCProviderLogo, detectProvider, getProviderButtonStyle, getProviderButtonText } from '@/components/OIDCProviderLogos';
 
+function scheduleIdleTask(task: () => void, timeout = 2500): () => void {
+  const idleWindow = window as unknown as {
+    requestIdleCallback?: (callback: () => void, options: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  if (idleWindow.requestIdleCallback) {
+    const idleId = idleWindow.requestIdleCallback(task, { timeout });
+    return () => idleWindow.cancelIdleCallback?.(idleId);
+  }
+
+  const timeoutId = window.setTimeout(task, Math.min(timeout, 1500));
+  return () => window.clearTimeout(timeoutId);
+}
+
 // 版本显示组件
 function VersionDisplay() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkUpdate = async () => {
       try {
         const status = await checkForUpdates();
-        setUpdateStatus(status);
-      } catch (_) {
+        if (!cancelled) setUpdateStatus(status);
+      } catch {
         // do nothing
       } finally {
-        setIsChecking(false);
+        if (!cancelled) setIsChecking(false);
       }
     };
 
-    checkUpdate();
+    const cancelIdleTask = scheduleIdleTask(() => void checkUpdate());
+    return () => {
+      cancelled = true;
+      cancelIdleTask();
+    };
   }, []);
 
   return (
@@ -107,19 +127,29 @@ function LoginPageClient() {
 
   // 获取 Bing 每日壁纸（通过代理 API）
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchBingWallpaper = async () => {
       try {
-        const response = await fetch('/api/bing-wallpaper');
+        const response = await fetch('/api/bing-wallpaper', {
+          signal: controller.signal,
+        });
         const data = await response.json();
         if (data.url) {
           setBingWallpaper(data.url);
         }
       } catch (error) {
-        console.log('Failed to fetch Bing wallpaper:', error);
+        if (!controller.signal.aborted) {
+          console.log('Failed to fetch Bing wallpaper:', error);
+        }
       }
     };
 
-    fetchBingWallpaper();
+    const cancelIdleTask = scheduleIdleTask(() => void fetchBingWallpaper(), 1800);
+    return () => {
+      cancelIdleTask();
+      controller.abort();
+    };
   }, []);
 
   // 获取 Telegram Magic Link 配置
@@ -185,17 +215,18 @@ function LoginPageClient() {
         // 记录登入时间
         const loginTime = Date.now();
         try {
-          await fetch('/api/user/my-stats', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ loginTime })
-          });
-          // 更新 localStorage 记录
           localStorage.setItem('lastRecordedLogin', loginTime.toString());
         } catch (error) {
-          console.log('记录登入时间失败:', error);
-          // 登入时间记录失败不影响正常登录流程
+          console.log('更新本地登入时间失败:', error);
         }
+
+        // 统计写入不应阻塞页面跳转；keepalive 让请求在导航后仍可完成。
+        void fetch('/api/user/my-stats', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ loginTime }),
+          keepalive: true,
+        }).catch((error) => console.log('记录登入时间失败:', error));
 
         const redirect = sanitizeRedirect(searchParams.get('redirect'));
         router.replace(redirect);
@@ -367,7 +398,7 @@ function LoginPageClient() {
               </p>
               <Link
                 href='/register'
-                prefetch={true}
+                prefetch={false}
                 className='group flex items-center justify-center gap-1.5 sm:gap-2 w-full px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-400 text-xs sm:text-sm font-semibold hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30 hover:border-green-300 dark:hover:border-green-700 transition-all duration-300 hover:shadow-md hover:scale-[1.02] active:scale-100'
               >
                 <UserPlus className='w-3.5 h-3.5 sm:w-4 sm:h-4' />

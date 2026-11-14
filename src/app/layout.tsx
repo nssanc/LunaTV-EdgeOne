@@ -9,7 +9,7 @@ import { Toaster } from 'sonner';
 
 import './globals.css';
 
-import { getConfig } from '@/lib/config';
+import { getLayoutConfig } from '@/lib/config';
 
 import { GlobalErrorIndicator } from '../components/GlobalErrorIndicator';
 import { GlobalDOMErrorHandler } from '../components/GlobalDOMErrorHandler';
@@ -47,7 +47,7 @@ export async function generateMetadata(): Promise<Metadata> {
   await cookies();
 
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
-  const config = await getConfig();
+  const config = await getLayoutConfig();
   let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV';
   if (storageType !== 'localstorage') {
     siteName = config.SiteConfig.SiteName;
@@ -99,7 +99,7 @@ export default async function RootLayout({
     query: string;
   }[];
   if (storageType !== 'localstorage') {
-    const config = await getConfig();
+    const config = await getLayoutConfig();
     siteName = config.SiteConfig.SiteName;
     announcement = config.SiteConfig.Announcement;
 

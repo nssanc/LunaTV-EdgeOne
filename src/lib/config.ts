@@ -62,6 +62,10 @@ let cachedConfig: AdminConfig;
 let cachedConfigAt = 0;
 // 正在进行中的读取，避免冷启动时并发请求同时打库
 let pendingConfig: Promise<AdminConfig> | null = null;
+// 页面布局只需要站点公开配置，不应为每次冷启动额外扫描全部用户。
+let cachedLayoutConfig: AdminConfig | null = null;
+let cachedLayoutConfigAt = 0;
+let pendingLayoutConfig: Promise<AdminConfig> | null = null;
 const CONFIG_TTL_MS = 5 * 60 * 1000;
 
 
@@ -388,9 +392,55 @@ export async function getConfig(): Promise<AdminConfig> {
   return pendingConfig;
 }
 
+/**
+ * 读取渲染全局布局所需的配置。
+ *
+ * 与 getConfig 不同，这里不会执行 configSelfCheck（其中包含全量用户扫描），
+ * 因而适合 metadata 和 RootLayout 这类所有页面都会经过的热路径。
+ * 用户鉴权、权限和管理接口仍应使用 getConfig。
+ */
+export async function getLayoutConfig(): Promise<AdminConfig> {
+  if (cachedLayoutConfig && Date.now() - cachedLayoutConfigAt < CONFIG_TTL_MS) {
+    return cachedLayoutConfig;
+  }
+
+  if (pendingLayoutConfig) {
+    return pendingLayoutConfig;
+  }
+
+  pendingLayoutConfig = (async () => {
+    try {
+      const adminConfig = await db.getAdminConfig();
+      if (adminConfig) {
+        cachedLayoutConfig = adminConfig;
+        cachedLayoutConfigAt = Date.now();
+        return adminConfig;
+      }
+    } catch (e) {
+      console.error('获取页面布局配置失败:', e);
+      if (cachedLayoutConfig) {
+        cachedLayoutConfigAt = Date.now();
+        return cachedLayoutConfig;
+      }
+    }
+
+    // 数据库尚未初始化时沿用完整初始化流程，保证首次部署行为不变。
+    const config = await getConfig();
+    cachedLayoutConfig = config;
+    cachedLayoutConfigAt = Date.now();
+    return config;
+  })().finally(() => {
+    pendingLayoutConfig = null;
+  });
+
+  return pendingLayoutConfig;
+}
+
 // 清除配置缓存，强制重新从数据库读取
 export function clearConfigCache(): void {
   cachedConfig = null as any;
+  cachedLayoutConfig = null;
+  cachedLayoutConfigAt = 0;
 }
 
 export async function configSelfCheck(adminConfig: AdminConfig): Promise<AdminConfig> {
@@ -678,6 +728,8 @@ export async function resetConfig() {
   const adminConfig = await getInitConfig(originConfig.ConfigFile, originConfig.ConfigSubscribtion);
   cachedConfig = adminConfig;
   cachedConfigAt = Date.now();
+  cachedLayoutConfig = adminConfig;
+  cachedLayoutConfigAt = Date.now();
   await db.saveAdminConfig(adminConfig);
 
   return;
@@ -836,6 +888,8 @@ export async function getAvailableApiSites(user?: string): Promise<ApiSite[]> {
 export async function setCachedConfig(config: AdminConfig) {
   cachedConfig = config;
   cachedConfigAt = Date.now();
+  cachedLayoutConfig = config;
+  cachedLayoutConfigAt = Date.now();
 }
 
 // 特殊功能权限检查
