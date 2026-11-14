@@ -154,10 +154,14 @@ function LoginPageClient() {
 
   // 获取 Telegram Magic Link 配置
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchTelegramConfig = async () => {
       try {
         console.log('[Login] Fetching server config...');
-        const response = await fetch('/api/server-config');
+        const response = await fetch('/api/server-config', {
+          signal: controller.signal,
+        });
         const data = await response.json();
         console.log('[Login] Server config received:', data);
         console.log('[Login] TelegramAuthConfig:', data.TelegramAuthConfig);
@@ -187,11 +191,18 @@ function LoginPageClient() {
           console.log('[Login] OIDC is NOT enabled');
         }
       } catch (error) {
-        console.log('Failed to fetch server config:', error);
+        if (!controller.signal.aborted) {
+          console.log('Failed to fetch server config:', error);
+        }
       }
     };
 
-    fetchTelegramConfig();
+    // 可选登录方式不阻塞用户名/密码表单的首次渲染。
+    const cancelIdleTask = scheduleIdleTask(() => void fetchTelegramConfig(), 800);
+    return () => {
+      cancelIdleTask();
+      controller.abort();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

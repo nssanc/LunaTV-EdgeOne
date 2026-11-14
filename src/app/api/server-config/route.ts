@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getConfig } from '@/lib/config';
+import { getLayoutConfig } from '@/lib/config';
 import { CURRENT_VERSION } from '@/lib/version'
 
 export const runtime = 'nodejs';
@@ -10,7 +10,8 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   console.log('server-config called: ', request.url);
 
-  const config = await getConfig();
+  // 这里只返回公开站点配置，不需要触发 getConfig 的全量用户同步。
+  const config = await getLayoutConfig();
   console.log('TelegramAuthConfig:', config.TelegramAuthConfig);
 
   // 检查是否是内部请求（middleware 获取信任网络配置）
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
   if (isInternalRequest && requestedKey === 'TrustedNetworkConfig') {
     return NextResponse.json({
       TrustedNetworkConfig: config.TrustedNetworkConfig || null,
+    }, {
+      headers: { 'Cache-Control': 'private, no-store' },
     });
   }
 
@@ -74,5 +77,10 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, {
+    headers: {
+      // 登录配置均为公开信息；边缘缓存可避免每次打开登录页都唤醒函数和数据库。
+      'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
+    },
+  });
 }

@@ -47,9 +47,9 @@ export async function generateMetadata(): Promise<Metadata> {
   await cookies();
 
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
-  const config = await getLayoutConfig();
   let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV';
   if (storageType !== 'localstorage') {
+    const config = await getLayoutConfig();
     siteName = config.SiteConfig.SiteName;
   }
 

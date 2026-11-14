@@ -1,16 +1,21 @@
 'use client';
 
 import { Sparkles } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 import { isAIRecommendFeatureDisabled } from '@/lib/ai-recommend.client';
 
-import AIRecommendModal from './AIRecommendModal';
-import ModernNav from './ModernNav';
 import { useSite } from './SiteProvider';
 import { ThemeToggle } from './ThemeToggle';
-import { UserMenu } from './UserMenu';
+
+// 登录、注册等独立页面完全不渲染这些组件，拆包后也不会下载其大型依赖。
+const AIRecommendModal = dynamic(() => import('./AIRecommendModal'));
+const ModernNav = dynamic(() => import('./ModernNav'));
+const UserMenu = dynamic(() =>
+  import('./UserMenu').then((module) => module.UserMenu)
+);
 
 // 不需要导航栏的独立路由
 const STANDALONE_ROUTES = [
@@ -28,6 +33,8 @@ function isStandaloneRoute(pathname: string) {
   );
 }
 
+const subscribeToRuntimeConfig = () => () => undefined;
+
 export default function NavigationShell() {
   const pathname = usePathname();
   const { siteName } = useSite();
@@ -35,12 +42,11 @@ export default function NavigationShell() {
 
   // AI 推荐功能
   const [showAIRecommendModal, setShowAIRecommendModal] = useState(false);
-  const [aiEnabled, setAiEnabled] = useState<boolean | null>(true);
-
-  useEffect(() => {
-    const disabled = isAIRecommendFeatureDisabled();
-    setAiEnabled(!disabled);
-  }, []);
+  const aiEnabled = useSyncExternalStore(
+    subscribeToRuntimeConfig,
+    () => !isAIRecommendFeatureDisabled(),
+    () => true,
+  );
 
   // 独立路由不显示导航栏
   if (isStandalone) {

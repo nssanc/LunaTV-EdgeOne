@@ -1,11 +1,19 @@
 'use client';
 
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { useEffect } from 'react';
-import { getQueryClient } from '@/lib/get-query-client';
-import { subscribeToDataUpdates } from '@/lib/db.client';
+import dynamic from 'next/dynamic';
 import type * as React from 'react';
+import { useEffect } from 'react';
+
+import { subscribeToDataUpdates } from '@/lib/db.client';
+import { getQueryClient } from '@/lib/get-query-client';
+
+// DevTools 不进入生产首屏公共包。
+const ReactQueryDevtools = process.env.NODE_ENV === 'development'
+  ? dynamic(() =>
+      import('@tanstack/react-query-devtools').then((module) => module.ReactQueryDevtools)
+    )
+  : null;
 
 /**
  * 全局事件订阅：统一监听数据更新事件并 invalidate 相关 query 缓存
@@ -73,7 +81,7 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
       <GlobalCacheInvalidator />
       {children}
       {/* React Query DevTools - 仅在开发环境显示 */}
-      <ReactQueryDevtools initialIsOpen={false} />
+      {ReactQueryDevtools && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );
 }
